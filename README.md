@@ -38,9 +38,8 @@ Copy `main.js` and `manifest.json` to your vault's `.obsidian/plugins/obsidian-t
 
 ### Setup
 
-1. Clone the repository to your workspace:
+1. Clone the repository:
    ```bash
-   cd ~/Documents/workspace
    git clone https://github.com/dss99911/obsidian-tasks-mcp.git
    ```
 
@@ -52,7 +51,7 @@ Copy `main.js` and `manifest.json` to your vault's `.obsidian/plugins/obsidian-t
 
 3. Identify your Obsidian vault's plugin folder:
    ```bash
-   # Example: ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp/
+   # Example: <YOUR_VAULT>/.obsidian/plugins/obsidian-tasks-mcp/
    ```
 
 ### Development Workflow
@@ -63,10 +62,10 @@ Create a symlink from your vault's plugin folder to the source:
 
 ```bash
 # Remove existing plugin folder if exists
-rm -rf ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp
+rm -rf <YOUR_VAULT>/.obsidian/plugins/obsidian-tasks-mcp
 
 # Create symlink
-ln -s ~/Documents/workspace/obsidian-tasks-mcp ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp
+ln -s /path/to/obsidian-tasks-mcp <YOUR_VAULT>/.obsidian/plugins/obsidian-tasks-mcp
 ```
 
 Now builds will automatically be available to Obsidian.
@@ -77,7 +76,7 @@ After each build, copy files to the plugin folder:
 
 ```bash
 npm run build
-cp main.js manifest.json ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp/
+cp main.js manifest.json <YOUR_VAULT>/.obsidian/plugins/obsidian-tasks-mcp/
 ```
 
 ### Build Commands
