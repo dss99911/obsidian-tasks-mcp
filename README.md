@@ -2,18 +2,6 @@
 
 An Obsidian plugin that exposes task management functionality via MCP (Model Context Protocol), enabling AI assistants like Claude to interact with your tasks directly.
 
-## Why This Plugin?
-
-There are several Obsidian MCP solutions available, but this plugin is specifically designed for **task management** with [Obsidian Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) integration:
-
-| Feature | Generic MCP Servers | This Plugin |
-|---------|---------------------|-------------|
-| Tasks query syntax | No | Yes (`not done`, `due today`, etc.) |
-| Tasks plugin API | No | Yes (recurrence handling) |
-| Task-specific tools | No | Yes (add, update, toggle, query) |
-| Daily Note integration | Limited | Built-in default |
-| Runs inside Obsidian | Some | Yes (no external server) |
-
 ## Features
 
 - **Full CRUD operations**: Add, update, remove, and toggle tasks programmatically
