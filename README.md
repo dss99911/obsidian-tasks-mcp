@@ -2,6 +2,18 @@
 
 An Obsidian plugin that exposes task management functionality via MCP (Model Context Protocol), enabling AI assistants like Claude to interact with your tasks directly.
 
+## Why This Plugin?
+
+There are several Obsidian MCP solutions available, but this plugin is specifically designed for **task management** with [Obsidian Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) integration:
+
+| Feature | Generic MCP Servers | This Plugin |
+|---------|---------------------|-------------|
+| Tasks query syntax | No | Yes (`not done`, `due today`, etc.) |
+| Tasks plugin API | No | Yes (recurrence handling) |
+| Task-specific tools | No | Yes (add, update, toggle, query) |
+| Daily Note integration | Limited | Built-in default |
+| Runs inside Obsidian | Some | Yes (no external server) |
+
 ## Features
 
 - **Full CRUD operations**: Add, update, remove, and toggle tasks programmatically
@@ -13,29 +25,32 @@ An Obsidian plugin that exposes task management functionality via MCP (Model Con
 
 ## Installation
 
-### Manual Installation
+### From GitHub Release
 
-1. Download the latest release (`main.js`, `manifest.json`)
-2. Create folder: `<vault>/.obsidian/plugins/obsidian-tasks-mcp/`
-3. Copy the files into the folder
-4. Enable "Tasks MCP Server" in Obsidian Settings > Community plugins
+1. Go to [Releases](https://github.com/dss99911/obsidian-tasks-mcp/releases)
+2. Download `main.js` and `manifest.json` from the latest release
+3. In your vault, create folder: `.obsidian/plugins/obsidian-tasks-mcp/`
+4. Copy the downloaded files into this folder
+5. Open Obsidian Settings > Community plugins
+6. Turn off "Restricted mode" if enabled
+7. Find "Tasks MCP Server" and enable it
 
 ### Build from Source
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/dss99911/obsidian-tasks-mcp.git
 cd obsidian-tasks-mcp
 npm install
 npm run build
 ```
 
-Copy `main.js` and `manifest.json` to your vault's plugin folder.
+Copy `main.js` and `manifest.json` to your vault's `.obsidian/plugins/obsidian-tasks-mcp/` folder.
 
 ## Configuration
 
 ### MCP Client Setup
 
-Add to your Claude Code or MCP client configuration:
+Add to your Claude Code MCP configuration (`~/.claude/mcp.json` or project `.mcp.json`):
 
 ```json
 {
@@ -50,8 +65,10 @@ Add to your Claude Code or MCP client configuration:
 
 ### Plugin Settings
 
-- **Server Port**: Default 3789, configurable in plugin settings
-- **Auto-start**: Server starts automatically when Obsidian launches
+In Obsidian Settings > Tasks MCP Server:
+
+- **Server Port**: Default 3789, configurable
+- **Auto-start**: Server starts automatically when Obsidian launches (default: on)
 
 ## Tools
 
@@ -181,6 +198,10 @@ Recognizes standard Obsidian Tasks format:
 ```
 - [ ] Complete project report 📅 2025-05-01 ⏳ 2025-04-25 #work ⏫
 ```
+
+## Security Note
+
+This plugin runs an HTTP server on localhost. Only local applications can connect to it. If you need remote access, consider using a secure tunnel.
 
 ## License
 
