@@ -8,10 +8,43 @@ interface TasksApiV1 {
 	executeToggleTaskDoneCommand: (line: string, path: string) => string;
 }
 
+// Tasks Plugin internal types
+interface TasksTask {
+	path: string;
+	lineNumber: number;
+	description: string;
+	status: { symbol: string; name: string };
+	dueDate?: { format: (fmt: string) => string };
+	scheduledDate?: { format: (fmt: string) => string };
+	startDate?: { format: (fmt: string) => string };
+	createdDate?: { format: (fmt: string) => string };
+	priority: string;
+	recurrence?: { toText: () => string };
+	tags: string[];
+	originalMarkdown: string;
+}
+
+interface TasksQueryResult {
+	groups: { tasks: TasksTask[] }[];
+	totalTasksCountBeforeLimit: number;
+}
+
+interface TasksQuery {
+	applyQueryToTasks(tasks: TasksTask[]): TasksQueryResult;
+	error?: string;
+}
+
+interface TasksPluginInternal {
+	apiV1?: TasksApiV1;
+	getTasks?: () => TasksTask[];
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	[key: string]: any;
+}
+
 // Extended App interface for accessing internal plugins
 interface AppWithPlugins extends App {
 	plugins?: {
-		plugins?: Record<string, { apiV1?: TasksApiV1 }>;
+		plugins?: Record<string, TasksPluginInternal>;
 	};
 	internalPlugins?: {
 		plugins?: Record<string, { instance?: { options?: { folder?: string; format?: string } } }>;
@@ -73,6 +106,8 @@ interface Task {
 	priority?: 'highest' | 'high' | 'medium' | 'low' | 'lowest';
 	recurrence?: string;
 	originalMarkdown: string;
+	// Date derived from Daily Note filename (e.g., 2026-01-05.md → 2026-01-05)
+	fileDate?: string;
 }
 
 // Task parsing utilities
@@ -83,7 +118,20 @@ class TaskParser {
 	static readonly scheduledDateRegex = /⏳\s?(\d{4}-\d{2}-\d{2})/u;
 	static readonly startDateRegex = /🛫\s?(\d{4}-\d{2}-\d{2})/u;
 	static readonly createdDateRegex = /➕\s?(\d{4}-\d{2}-\d{2})/u;
-	static readonly recurrenceRegex = /🔁\s?(.*?)(?=(\s|$))/u;
+	static readonly recurrenceRegex = /🔁\s?([^⏳📅🛫➕⏫🔼🔽⏬#\n]+)/u;
+	// Regex to extract date from Daily Note filename (e.g., 2026-01-05.md)
+	static readonly fileDateRegex = /(\d{4}-\d{2}-\d{2})\.md$/;
+
+	/**
+	 * Extract date from Daily Note file path
+	 * Supports patterns like:
+	 * - Daily Notes/2026-01-05.md
+	 * - Notebook/Daily Note/2026/2026-01-05.md
+	 */
+	static extractFileDate(filePath: string): string | undefined {
+		const match = filePath.match(this.fileDateRegex);
+		return match ? match[1] : undefined;
+	}
 
 	static parseTaskLine(line: string, filePath: string, lineNumber: number): Task | null {
 		const match = line.match(this.taskRegex);
@@ -139,8 +187,9 @@ class TaskParser {
 			startDate: startMatch ? startMatch[1] : undefined,
 			createdDate: createdMatch ? createdMatch[1] : undefined,
 			priority,
-			recurrence: recurrenceMatch ? recurrenceMatch[1] : undefined,
-			originalMarkdown: line
+			recurrence: recurrenceMatch ? recurrenceMatch[1].trim() : undefined,
+			originalMarkdown: line,
+			fileDate: this.extractFileDate(filePath)
 		};
 	}
 
@@ -230,6 +279,20 @@ class TaskParser {
 			return task.scheduledDate !== undefined;
 		}
 
+		// Scheduled date with specific date
+		const scheduledOnMatch = filter.match(/^scheduled\s+(?:on\s+)?(\d{4}-\d{2}-\d{2})$/);
+		if (scheduledOnMatch) {
+			return task.scheduledDate === scheduledOnMatch[1];
+		}
+		const scheduledBeforeMatch = filter.match(/^scheduled\s+before\s+(\d{4}-\d{2}-\d{2})$/);
+		if (scheduledBeforeMatch) {
+			return task.scheduledDate !== undefined && task.scheduledDate < scheduledBeforeMatch[1];
+		}
+		const scheduledAfterMatch = filter.match(/^scheduled\s+after\s+(\d{4}-\d{2}-\d{2})$/);
+		if (scheduledAfterMatch) {
+			return task.scheduledDate !== undefined && task.scheduledDate > scheduledAfterMatch[1];
+		}
+
 		// Start date filters
 		if (filter === 'starts today') {
 			return task.startDate === today;
@@ -242,6 +305,20 @@ class TaskParser {
 		}
 		if (filter === 'has start date') {
 			return task.startDate !== undefined;
+		}
+
+		// Start date with specific date
+		const startsOnMatch = filter.match(/^starts\s+(?:on\s+)?(\d{4}-\d{2}-\d{2})$/);
+		if (startsOnMatch) {
+			return task.startDate === startsOnMatch[1];
+		}
+		const startsBeforeMatch = filter.match(/^starts\s+before\s+(\d{4}-\d{2}-\d{2})$/);
+		if (startsBeforeMatch) {
+			return task.startDate !== undefined && task.startDate < startsBeforeMatch[1];
+		}
+		const startsAfterMatch = filter.match(/^starts\s+after\s+(\d{4}-\d{2}-\d{2})$/);
+		if (startsAfterMatch) {
+			return task.startDate !== undefined && task.startDate > startsAfterMatch[1];
 		}
 
 		// Tag filters
@@ -297,6 +374,59 @@ class TaskParser {
 			return task.recurrence === undefined;
 		}
 
+		// Happens filters (checks due, scheduled, start dates, and fileDate from Daily Note)
+		// fileDate is only used when no explicit dates are set
+		const hasExplicitDate = task.dueDate !== undefined || task.scheduledDate !== undefined || task.startDate !== undefined;
+		const effectiveFileDate = hasExplicitDate ? undefined : task.fileDate;
+
+		const happensBeforeMatch = filter.match(/^happens\s+before\s+(\d{4}-\d{2}-\d{2})$/);
+		if (happensBeforeMatch) {
+			const targetDate = happensBeforeMatch[1];
+			return (task.dueDate !== undefined && task.dueDate < targetDate) ||
+				(task.scheduledDate !== undefined && task.scheduledDate < targetDate) ||
+				(task.startDate !== undefined && task.startDate < targetDate) ||
+				(effectiveFileDate !== undefined && effectiveFileDate < targetDate);
+		}
+
+		const happensAfterMatch = filter.match(/^happens\s+after\s+(\d{4}-\d{2}-\d{2})$/);
+		if (happensAfterMatch) {
+			const targetDate = happensAfterMatch[1];
+			return (task.dueDate !== undefined && task.dueDate > targetDate) ||
+				(task.scheduledDate !== undefined && task.scheduledDate > targetDate) ||
+				(task.startDate !== undefined && task.startDate > targetDate) ||
+				(effectiveFileDate !== undefined && effectiveFileDate > targetDate);
+		}
+
+		const happensOnMatch = filter.match(/^happens\s+(?:on\s+)?(\d{4}-\d{2}-\d{2})$/);
+		if (happensOnMatch) {
+			const targetDate = happensOnMatch[1];
+			return task.dueDate === targetDate ||
+				task.scheduledDate === targetDate ||
+				task.startDate === targetDate ||
+				effectiveFileDate === targetDate;
+		}
+
+		if (filter === 'happens today') {
+			return task.dueDate === today ||
+				task.scheduledDate === today ||
+				task.startDate === today ||
+				effectiveFileDate === today;
+		}
+
+		if (filter === 'happens before today') {
+			return (task.dueDate !== undefined && task.dueDate < today) ||
+				(task.scheduledDate !== undefined && task.scheduledDate < today) ||
+				(task.startDate !== undefined && task.startDate < today) ||
+				(effectiveFileDate !== undefined && effectiveFileDate < today);
+		}
+
+		if (filter === 'happens after today') {
+			return (task.dueDate !== undefined && task.dueDate > today) ||
+				(task.scheduledDate !== undefined && task.scheduledDate > today) ||
+				(task.startDate !== undefined && task.startDate > today) ||
+				(effectiveFileDate !== undefined && effectiveFileDate > today);
+		}
+
 		// Default: check if description contains the filter text
 		return task.description.toLowerCase().includes(filter);
 	}
@@ -321,8 +451,16 @@ export default class TasksMcpPlugin extends Plugin {
 	settings: TasksMcpSettings;
 	server: http.Server | null = null;
 
+	// Task cache for performance
+	private taskCache: Map<string, Task[]> = new Map();
+	private cacheInitialized = false;
+
 	async onload() {
 		await this.loadSettings();
+
+		// Initialize cache and set up file watchers
+		this.initializeCache();
+		this.registerFileWatchers();
 
 		// Add settings tab
 		this.addSettingTab(new TasksMcpSettingTab(this.app, this));
@@ -378,6 +516,143 @@ export default class TasksMcpPlugin extends Plugin {
 			return null;
 		}
 		return tasksPlugin.apiV1;
+	}
+
+	getTasksPlugin(): TasksPluginInternal | null {
+		return (this.app as AppWithPlugins).plugins?.plugins?.['obsidian-tasks-plugin'] ?? null;
+	}
+
+	/**
+	 * Query tasks using Tasks plugin's internal Query class
+	 * Falls back to our own parser if Tasks plugin is not available
+	 */
+	async queryTasksWithTasksPlugin(queryText: string): Promise<Task[] | null> {
+		const tasksPlugin = this.getTasksPlugin();
+		if (!tasksPlugin?.getTasks) {
+			return null; // Tasks plugin not available or doesn't have getTasks
+		}
+
+		try {
+			// Get all tasks from Tasks plugin
+			const tasksTasks = tasksPlugin.getTasks();
+
+			// Try to find Query class in the Tasks plugin
+			// The Query class should be accessible through the plugin's module
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const pluginModule = tasksPlugin as any;
+
+			// Look for Query constructor in various places
+			let QueryClass = null;
+
+			// Method 1: Check if there's a Query property
+			if (pluginModule.Query) {
+				QueryClass = pluginModule.Query;
+			}
+
+			// Method 2: Check queryRenderer for access to Query
+			if (!QueryClass && pluginModule.queryRenderer) {
+				// Try to extract Query class from queryRenderer's context
+				const renderer = pluginModule.queryRenderer;
+				if (renderer.constructor) {
+					// Look through the module scope
+					const constructorStr = renderer.constructor.toString();
+					console.debug('QueryRenderer constructor:', constructorStr.substring(0, 200));
+				}
+			}
+
+			// Method 3: Use require to get the Query module (if bundled with exports)
+			if (!QueryClass) {
+				try {
+					// This works if Tasks plugin exposes its internals
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					const win = window as any;
+					if (win.require) {
+						// Try common module paths
+						const possiblePaths = [
+							'obsidian-tasks-plugin',
+							'.obsidian/plugins/obsidian-tasks-plugin/main',
+						];
+						for (const path of possiblePaths) {
+							try {
+								const mod = win.require(path);
+								if (mod?.Query) {
+									QueryClass = mod.Query;
+									break;
+								}
+							} catch {
+								// Path not found, continue
+							}
+						}
+					}
+				} catch {
+					// require not available
+				}
+			}
+
+			if (!QueryClass) {
+				console.debug('Tasks MCP: Could not find Tasks Query class, falling back to internal parser');
+				return null;
+			}
+
+			// Create query and execute
+			const query = new QueryClass(queryText) as TasksQuery;
+			if (query.error) {
+				console.error('Tasks query error:', query.error);
+				return null;
+			}
+
+			const result = query.applyQueryToTasks(tasksTasks);
+
+			// Convert Tasks plugin tasks to our Task format
+			const tasks: Task[] = [];
+			for (const group of result.groups) {
+				for (const t of group.tasks) {
+					tasks.push(this.convertTasksPluginTask(t));
+				}
+			}
+
+			return tasks;
+		} catch (e) {
+			console.error('Error querying with Tasks plugin:', e);
+			return null;
+		}
+	}
+
+	convertTasksPluginTask(t: TasksTask): Task {
+		let status: Task['status'] = 'incomplete';
+		const symbol = t.status?.symbol ?? ' ';
+		if (['x', 'X'].includes(symbol)) {
+			status = 'complete';
+		} else if (symbol === '-') {
+			status = 'cancelled';
+		} else if (symbol === '/') {
+			status = 'in_progress';
+		}
+
+		let priority: Task['priority'] = undefined;
+		if (t.priority) {
+			const p = t.priority.toLowerCase();
+			if (p === 'highest' || p === 'high' || p === 'medium' || p === 'low' || p === 'lowest') {
+				priority = p;
+			}
+		}
+
+		return {
+			id: `${t.path}:${t.lineNumber}`,
+			description: t.description,
+			status,
+			statusSymbol: symbol,
+			filePath: t.path,
+			lineNumber: t.lineNumber,
+			tags: t.tags || [],
+			dueDate: t.dueDate?.format('YYYY-MM-DD'),
+			scheduledDate: t.scheduledDate?.format('YYYY-MM-DD'),
+			startDate: t.startDate?.format('YYYY-MM-DD'),
+			createdDate: t.createdDate?.format('YYYY-MM-DD'),
+			priority,
+			recurrence: t.recurrence?.toText(),
+			originalMarkdown: t.originalMarkdown
+		};
 	}
 
 	getDailyNotePath(): string {
@@ -1175,8 +1450,20 @@ tag includes #work`,
 				case 'query_tasks': {
 					const query = args.query as string;
 					const filePath = args.filePath as string | undefined;
-					const allTasks = await this.getAllTasks(filePath);
-					const filteredTasks = TaskParser.queryTasks(allTasks, query);
+
+					// Try to use Tasks plugin's internal Query class first
+					let filteredTasks: Task[] | null = null;
+					if (!filePath) {
+						// Only use Tasks plugin query when not filtering by file path
+						filteredTasks = await this.queryTasksWithTasksPlugin(query);
+					}
+
+					// Fallback to our own parser
+					if (filteredTasks === null) {
+						const allTasks = await this.getAllTasks(filePath);
+						filteredTasks = TaskParser.queryTasks(allTasks, query);
+					}
+
 					return {
 						jsonrpc: '2.0',
 						id,
@@ -1258,21 +1545,68 @@ tag includes #work`,
 		};
 	}
 
-	async getAllTasks(filePath?: string): Promise<Task[]> {
-		const tasks: Task[] = [];
-
-		let files: TFile[];
-		if (filePath) {
-			const file = this.app.vault.getAbstractFileByPath(filePath);
-			files = file instanceof TFile ? [file] : [];
-		} else {
-			files = this.app.vault.getMarkdownFiles();
-		}
-
+	/**
+	 * Initialize the task cache by parsing all markdown files
+	 */
+	private async initializeCache(): Promise<void> {
+		const files = this.app.vault.getMarkdownFiles();
 		for (const file of files) {
+			await this.updateCacheForFile(file);
+		}
+		this.cacheInitialized = true;
+		console.log(`[TasksMCP] Cache initialized with ${this.taskCache.size} files`);
+	}
 
+	/**
+	 * Register file watchers for cache invalidation
+	 */
+	private registerFileWatchers(): void {
+		// File modified
+		this.registerEvent(
+			this.app.vault.on('modify', async (file) => {
+				if (file instanceof TFile && file.extension === 'md') {
+					await this.updateCacheForFile(file);
+				}
+			})
+		);
+
+		// File created
+		this.registerEvent(
+			this.app.vault.on('create', async (file) => {
+				if (file instanceof TFile && file.extension === 'md') {
+					await this.updateCacheForFile(file);
+				}
+			})
+		);
+
+		// File deleted
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				if (file instanceof TFile && file.extension === 'md') {
+					this.taskCache.delete(file.path);
+				}
+			})
+		);
+
+		// File renamed
+		this.registerEvent(
+			this.app.vault.on('rename', async (file, oldPath) => {
+				if (file instanceof TFile && file.extension === 'md') {
+					this.taskCache.delete(oldPath);
+					await this.updateCacheForFile(file);
+				}
+			})
+		);
+	}
+
+	/**
+	 * Update cache for a single file
+	 */
+	private async updateCacheForFile(file: TFile): Promise<void> {
+		try {
 			const content = await this.app.vault.read(file);
 			const lines = content.split('\n');
+			const tasks: Task[] = [];
 
 			lines.forEach((line, index) => {
 				const task = TaskParser.parseTaskLine(line, file.path, index + 1);
@@ -1280,9 +1614,35 @@ tag includes #work`,
 					tasks.push(task);
 				}
 			});
+
+			this.taskCache.set(file.path, tasks);
+		} catch (e) {
+			console.error(`[TasksMCP] Error updating cache for ${file.path}:`, e);
+		}
+	}
+
+	async getAllTasks(filePath?: string): Promise<Task[]> {
+		// If specific file requested, read directly (for accuracy)
+		if (filePath) {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file instanceof TFile) {
+				await this.updateCacheForFile(file);
+				return this.taskCache.get(filePath) || [];
+			}
+			return [];
 		}
 
-		return tasks;
+		// If cache not initialized yet, initialize it
+		if (!this.cacheInitialized) {
+			await this.initializeCache();
+		}
+
+		// Return all cached tasks
+		const allTasks: Task[] = [];
+		for (const tasks of this.taskCache.values()) {
+			allTasks.push(...tasks);
+		}
+		return allTasks;
 	}
 }
 

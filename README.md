@@ -32,7 +32,72 @@ npm install
 npm run build
 ```
 
-Copy `main.js` and `manifest.json` to your vault's `.obsidian/plugins/tasks-mcp/` folder.
+Copy `main.js` and `manifest.json` to your vault's `.obsidian/plugins/obsidian-tasks-mcp/` folder.
+
+## Local Development
+
+### Setup
+
+1. Clone the repository to your workspace:
+   ```bash
+   cd ~/Documents/workspace
+   git clone https://github.com/dss99911/obsidian-tasks-mcp.git
+   ```
+
+2. Install dependencies:
+   ```bash
+   cd obsidian-tasks-mcp
+   npm install
+   ```
+
+3. Identify your Obsidian vault's plugin folder:
+   ```bash
+   # Example: ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp/
+   ```
+
+### Development Workflow
+
+**Option 1: Symlink (Recommended)**
+
+Create a symlink from your vault's plugin folder to the source:
+
+```bash
+# Remove existing plugin folder if exists
+rm -rf ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp
+
+# Create symlink
+ln -s ~/Documents/workspace/obsidian-tasks-mcp ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp
+```
+
+Now builds will automatically be available to Obsidian.
+
+**Option 2: Manual Copy**
+
+After each build, copy files to the plugin folder:
+
+```bash
+npm run build
+cp main.js manifest.json ~/Documents/workspace/obsidian/.obsidian/plugins/obsidian-tasks-mcp/
+```
+
+### Build Commands
+
+```bash
+# Production build
+npm run build
+
+# Development build with watch mode
+npm run dev
+```
+
+### Reload Plugin
+
+After building, reload the plugin in Obsidian:
+1. Settings → Community plugins
+2. Toggle off "Tasks MCP Server"
+3. Toggle on "Tasks MCP Server"
+
+Or restart Obsidian.
 
 ## Configuration
 
