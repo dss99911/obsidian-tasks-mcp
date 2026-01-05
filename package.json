@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-tasks-mcp",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Exposes Obsidian Tasks plugin API via MCP server",
 	"main": "main.js",
 	"scripts": {

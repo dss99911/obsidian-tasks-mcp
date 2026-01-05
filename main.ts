@@ -8,6 +8,16 @@ interface TasksApiV1 {
 	executeToggleTaskDoneCommand: (line: string, path: string) => string;
 }
 
+// Extended App interface for accessing internal plugins
+interface AppWithPlugins extends App {
+	plugins?: {
+		plugins?: Record<string, { apiV1?: TasksApiV1 }>;
+	};
+	internalPlugins?: {
+		plugins?: Record<string, { instance?: { options?: { folder?: string; format?: string } } }>;
+	};
+}
+
 interface TasksMcpSettings {
 	port: number;
 	enableServer: boolean;
@@ -69,11 +79,11 @@ interface Task {
 class TaskParser {
 	static readonly taskRegex = /^([\s\t>]*)([-*+]|[0-9]+[.)]) +\[(.)\] *(.*)/u;
 	static readonly hashTagsRegex = /(^|\s)#[^ !@#$%^&*(),.?":{}|<>]+/g;
-	static readonly dueDateRegex = /[📅🗓️]\s?(\d{4}-\d{2}-\d{2})/;
-	static readonly scheduledDateRegex = /⏳\s?(\d{4}-\d{2}-\d{2})/;
-	static readonly startDateRegex = /🛫\s?(\d{4}-\d{2}-\d{2})/;
-	static readonly createdDateRegex = /➕\s?(\d{4}-\d{2}-\d{2})/;
-	static readonly recurrenceRegex = /🔁\s?(.*?)(?=(\s|$))/;
+	static readonly dueDateRegex = /[📅🗓️]\s?(\d{4}-\d{2}-\d{2})/u;
+	static readonly scheduledDateRegex = /⏳\s?(\d{4}-\d{2}-\d{2})/u;
+	static readonly startDateRegex = /🛫\s?(\d{4}-\d{2}-\d{2})/u;
+	static readonly createdDateRegex = /➕\s?(\d{4}-\d{2}-\d{2})/u;
+	static readonly recurrenceRegex = /🔁\s?(.*?)(?=(\s|$))/u;
 
 	static parseTaskLine(line: string, filePath: string, lineNumber: number): Task | null {
 		const match = line.match(this.taskRegex);
@@ -320,7 +330,7 @@ export default class TasksMcpPlugin extends Plugin {
 		// Add command to start/stop server
 		this.addCommand({
 			id: 'toggle-mcp-server',
-			name: 'Toggle MCP Server',
+			name: 'Toggle MCP server',
 			callback: () => {
 				if (this.server) {
 					this.stopServer();
@@ -332,12 +342,12 @@ export default class TasksMcpPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'show-server-status',
-			name: 'Show MCP Server Status',
+			name: 'Show MCP server status',
 			callback: () => {
 				if (this.server) {
-					new Notice(`MCP Server running on port ${this.settings.port}`);
+					new Notice(`MCP server running on port ${this.settings.port}`);
 				} else {
-					new Notice('MCP Server is not running');
+					new Notice('MCP server is not running');
 				}
 			}
 		});
@@ -362,7 +372,7 @@ export default class TasksMcpPlugin extends Plugin {
 	}
 
 	getTasksApi(): TasksApiV1 | null {
-		const tasksPlugin = (this.app as any).plugins?.plugins?.['obsidian-tasks-plugin'];
+		const tasksPlugin = (this.app as AppWithPlugins).plugins?.plugins?.['obsidian-tasks-plugin'];
 		if (!tasksPlugin?.apiV1) {
 			return null;
 		}
@@ -376,7 +386,7 @@ export default class TasksMcpPlugin extends Plugin {
 		const day = String(today.getDate()).padStart(2, '0');
 
 		// Try to get Daily Notes plugin settings
-		const dailyNotesPlugin = (this.app as any).internalPlugins?.plugins?.['daily-notes'];
+		const dailyNotesPlugin = (this.app as AppWithPlugins).internalPlugins?.plugins?.['daily-notes'];
 		const options = dailyNotesPlugin?.instance?.options;
 
 		let folder = options?.folder || 'Daily Notes';
@@ -539,11 +549,11 @@ export default class TasksMcpPlugin extends Plugin {
 
 	startServer() {
 		if (this.server) {
-			new Notice('MCP Server is already running');
+			new Notice('MCP server is already running');
 			return;
 		}
 
-		this.server = http.createServer(async (req, res) => {
+		this.server = http.createServer((req, res) => {
 			// CORS headers
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -582,25 +592,27 @@ export default class TasksMcpPlugin extends Plugin {
 			if (req.url === '/mcp' && req.method === 'POST') {
 				let body = '';
 				req.on('data', chunk => body += chunk);
-				req.on('end', async () => {
-					try {
-						const request: JsonRpcRequest = JSON.parse(body);
-						const response = await this.handleMcpRequest(request);
-						res.writeHead(200, { 'Content-Type': 'application/json' });
-						res.end(JSON.stringify(response));
-					} catch (e) {
-						const error: JsonRpcResponse = {
-							jsonrpc: '2.0',
-							id: null,
-							error: {
-								code: -32700,
-								message: 'Parse error',
-								data: e instanceof Error ? e.message : String(e)
-							}
-						};
-						res.writeHead(400, { 'Content-Type': 'application/json' });
-						res.end(JSON.stringify(error));
-					}
+				req.on('end', () => {
+					void (async () => {
+						try {
+							const request: JsonRpcRequest = JSON.parse(body);
+							const response = await this.handleMcpRequest(request);
+							res.writeHead(200, { 'Content-Type': 'application/json' });
+							res.end(JSON.stringify(response));
+						} catch (e) {
+							const error: JsonRpcResponse = {
+								jsonrpc: '2.0',
+								id: null,
+								error: {
+									code: -32700,
+									message: 'Parse error',
+									data: e instanceof Error ? e.message : String(e)
+								}
+							};
+							res.writeHead(400, { 'Content-Type': 'application/json' });
+							res.end(JSON.stringify(error));
+						}
+					})();
 				});
 				return;
 			}
@@ -617,8 +629,8 @@ export default class TasksMcpPlugin extends Plugin {
 		});
 
 		this.server.listen(this.settings.port, () => {
-			new Notice(`MCP Server started on port ${this.settings.port}`);
-			console.log(`Tasks MCP Server listening on http://localhost:${this.settings.port}`);
+			new Notice(`MCP server started on port ${this.settings.port}`);
+			console.debug(`Tasks MCP server listening on http://localhost:${this.settings.port}`);
 		});
 
 		this.server.on('error', (err: NodeJS.ErrnoException) => {
@@ -635,7 +647,7 @@ export default class TasksMcpPlugin extends Plugin {
 		if (this.server) {
 			this.server.close();
 			this.server = null;
-			new Notice('MCP Server stopped');
+			new Notice('MCP server stopped');
 		}
 	}
 
@@ -1017,12 +1029,12 @@ tag includes #work`,
 					// Build updated task with merged properties
 					const newDescription = args.description !== undefined ? args.description as string : currentTask.description
 						// Remove existing metadata from description for rebuilding
-						.replace(/[📅🗓️]\s?\d{4}-\d{2}-\d{2}/g, '')
-						.replace(/⏳\s?\d{4}-\d{2}-\d{2}/g, '')
-						.replace(/🛫\s?\d{4}-\d{2}-\d{2}/g, '')
-						.replace(/➕\s?\d{4}-\d{2}-\d{2}/g, '')
-						.replace(/🔁\s?[^\s]*/g, '')
-						.replace(/⏫⏫|⏫|🔼|🔽|⏬/g, '')
+						.replace(/[📅🗓️]\s?\d{4}-\d{2}-\d{2}/gu, '')
+						.replace(/⏳\s?\d{4}-\d{2}-\d{2}/gu, '')
+						.replace(/🛫\s?\d{4}-\d{2}-\d{2}/gu, '')
+						.replace(/➕\s?\d{4}-\d{2}-\d{2}/gu, '')
+						.replace(/🔁\s?[^\s]*/gu, '')
+						.replace(/⏫⏫|⏫|🔼|🔽|⏬/gu, '')
 						.replace(/(^|\s)#[^\s]+/g, '')
 						.trim();
 
@@ -1248,12 +1260,15 @@ tag includes #work`,
 	async getAllTasks(filePath?: string): Promise<Task[]> {
 		const tasks: Task[] = [];
 
-		const files = filePath
-			? [this.app.vault.getAbstractFileByPath(filePath) as TFile].filter(f => f)
-			: this.app.vault.getMarkdownFiles();
+		let files: TFile[];
+		if (filePath) {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			files = file instanceof TFile ? [file] : [];
+		} else {
+			files = this.app.vault.getMarkdownFiles();
+		}
 
 		for (const file of files) {
-			if (!(file instanceof TFile)) continue;
 
 			const content = await this.app.vault.read(file);
 			const lines = content.split('\n');
@@ -1282,10 +1297,8 @@ class TasksMcpSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName('Tasks MCP Server Settings').setHeading();
-
 		new Setting(containerEl)
-			.setName('Server Port')
+			.setName('Server port')
 			.setDesc('Port number for the MCP server')
 			.addText(text => text
 				.setPlaceholder('3789')
@@ -1299,8 +1312,8 @@ class TasksMcpSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Auto-start Server')
-			.setDesc('Automatically start the MCP server when Obsidian launches')
+			.setName('Auto-start server')
+			.setDesc('Automatically start the MCP server when the app launches')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableServer)
 				.onChange(async (value) => {
@@ -1309,10 +1322,10 @@ class TasksMcpSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Server Status')
+			.setName('Server status')
 			.setDesc(this.plugin.server ? `Running on port ${this.plugin.settings.port}` : 'Not running')
 			.addButton(button => button
-				.setButtonText(this.plugin.server ? 'Stop Server' : 'Start Server')
+				.setButtonText(this.plugin.server ? 'Stop server' : 'Start server')
 				.onClick(() => {
 					if (this.plugin.server) {
 						this.plugin.stopServer();
@@ -1322,7 +1335,7 @@ class TasksMcpSettingTab extends PluginSettingTab {
 					this.display(); // Refresh the view
 				}));
 
-		containerEl.createEl('h3', { text: 'Usage' });
+		new Setting(containerEl).setName('Usage').setHeading();
 		containerEl.createEl('p', { text: 'Add this to your MCP client configuration:' });
 
 		const codeBlock = containerEl.createEl('pre');
@@ -1336,8 +1349,8 @@ class TasksMcpSettingTab extends PluginSettingTab {
 }`
 		});
 
-		containerEl.createEl('h3', { text: 'Query Syntax' });
-		containerEl.createEl('p', { text: 'Use query_tasks with Obsidian Tasks query syntax:' });
+		new Setting(containerEl).setName('Query syntax').setHeading();
+		containerEl.createEl('p', { text: 'Use query_tasks with Tasks query syntax:' });
 
 		const queryExample = containerEl.createEl('pre');
 		queryExample.createEl('code', {
