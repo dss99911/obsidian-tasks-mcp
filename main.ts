@@ -1282,7 +1282,7 @@ class TasksMcpSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Tasks MCP Server Settings' });
+		new Setting(containerEl).setName('Tasks MCP Server Settings').setHeading();
 
 		new Setting(containerEl)
 			.setName('Server Port')
@@ -1313,7 +1313,7 @@ class TasksMcpSettingTab extends PluginSettingTab {
 			.setDesc(this.plugin.server ? `Running on port ${this.plugin.settings.port}` : 'Not running')
 			.addButton(button => button
 				.setButtonText(this.plugin.server ? 'Stop Server' : 'Start Server')
-				.onClick(async () => {
+				.onClick(() => {
 					if (this.plugin.server) {
 						this.plugin.stopServer();
 					} else {
