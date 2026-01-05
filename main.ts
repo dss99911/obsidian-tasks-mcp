@@ -364,7 +364,8 @@ export default class TasksMcpPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = await this.loadData() as Partial<TasksMcpSettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
 	}
 
 	async saveSettings() {
@@ -595,7 +596,7 @@ export default class TasksMcpPlugin extends Plugin {
 				req.on('end', () => {
 					void (async () => {
 						try {
-							const request: JsonRpcRequest = JSON.parse(body);
+							const request = JSON.parse(body) as JsonRpcRequest;
 							const response = await this.handleMcpRequest(request);
 							res.writeHead(200, { 'Content-Type': 'application/json' });
 							res.end(JSON.stringify(response));
