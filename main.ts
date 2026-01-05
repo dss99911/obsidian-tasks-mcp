@@ -79,7 +79,7 @@ interface Task {
 class TaskParser {
 	static readonly taskRegex = /^([\s\t>]*)([-*+]|[0-9]+[.)]) +\[(.)\] *(.*)/u;
 	static readonly hashTagsRegex = /(^|\s)#[^ !@#$%^&*(),.?":{}|<>]+/g;
-	static readonly dueDateRegex = /[📅🗓️]\s?(\d{4}-\d{2}-\d{2})/u;
+	static readonly dueDateRegex = /(?:📅|🗓)\s?(\d{4}-\d{2}-\d{2})/u;
 	static readonly scheduledDateRegex = /⏳\s?(\d{4}-\d{2}-\d{2})/u;
 	static readonly startDateRegex = /🛫\s?(\d{4}-\d{2}-\d{2})/u;
 	static readonly createdDateRegex = /➕\s?(\d{4}-\d{2}-\d{2})/u;
@@ -330,8 +330,7 @@ export default class TasksMcpPlugin extends Plugin {
 		// Add command to start/stop server
 		this.addCommand({
 			id: 'toggle-mcp-server',
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-			name: 'Toggle MCP server',
+			name: 'Toggle server',
 			callback: () => {
 				if (this.server) {
 					this.stopServer();
@@ -343,14 +342,12 @@ export default class TasksMcpPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'show-server-status',
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-			name: 'Show MCP server status',
+			name: 'Show server status',
 			callback: () => {
 				if (this.server) {
-					new Notice(`MCP server running on port ${this.settings.port}`);
+					new Notice(`Server running on port ${this.settings.port}`);
 				} else {
-					// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-					new Notice('MCP server is not running');
+					new Notice('Server is not running');
 				}
 			}
 		});
@@ -552,8 +549,7 @@ export default class TasksMcpPlugin extends Plugin {
 
 	startServer() {
 		if (this.server) {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-			new Notice('MCP server is already running');
+			new Notice('Server is already running');
 			return;
 		}
 
@@ -651,8 +647,7 @@ export default class TasksMcpPlugin extends Plugin {
 		if (this.server) {
 			this.server.close();
 			this.server = null;
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-			new Notice('MCP server stopped');
+			new Notice('Server stopped');
 		}
 	}
 
@@ -1034,7 +1029,7 @@ tag includes #work`,
 					// Build updated task with merged properties
 					const newDescription = args.description !== undefined ? args.description as string : currentTask.description
 						// Remove existing metadata from description for rebuilding
-						.replace(/[📅🗓️]\s?\d{4}-\d{2}-\d{2}/gu, '')
+						.replace(/(?:📅|🗓)\s?\d{4}-\d{2}-\d{2}/gu, '')
 						.replace(/⏳\s?\d{4}-\d{2}-\d{2}/gu, '')
 						.replace(/🛫\s?\d{4}-\d{2}-\d{2}/gu, '')
 						.replace(/➕\s?\d{4}-\d{2}-\d{2}/gu, '')
@@ -1304,8 +1299,7 @@ class TasksMcpSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Server port')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-			.setDesc('Port number for the MCP server')
+			.setDesc('Port number for the server')
 			.addText(text => text
 				.setPlaceholder('3789')
 				.setValue(String(this.plugin.settings.port))
@@ -1319,8 +1313,7 @@ class TasksMcpSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Auto-start server')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-			.setDesc('Automatically start the MCP server when the app launches')
+			.setDesc('Automatically start the server when the app launches')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableServer)
 				.onChange(async (value) => {
@@ -1343,8 +1336,7 @@ class TasksMcpSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl).setName('Usage').setHeading();
-		// eslint-disable-next-line obsidianmd/ui/sentence-case -- MCP is an acronym
-		containerEl.createEl('p', { text: 'Add this to your MCP client configuration:' });
+		containerEl.createEl('p', { text: 'Add this to your client configuration:' });
 
 		const codeBlock = containerEl.createEl('pre');
 		codeBlock.createEl('code', {
@@ -1358,17 +1350,11 @@ class TasksMcpSettingTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl).setName('Query syntax').setHeading();
-		// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tasks" is the plugin name
-		containerEl.createEl('p', { text: 'Use query_tasks with Tasks query syntax:' });
+		containerEl.createEl('p', { text: 'Use query_tasks tool with the following syntax:' });
 
 		const queryExample = containerEl.createEl('pre');
-		/* eslint-disable obsidianmd/ui/sentence-case -- code example */
-		queryExample.createEl('code', {
-			text: `not done
-due before 2025-05-01
-tag includes #work
-priority is high`
-		});
-		/* eslint-enable obsidianmd/ui/sentence-case */
+		const codeEl = queryExample.createEl('code');
+		const exampleText = ['not done', 'due before 2025-05-01', 'tag includes #work', 'priority is high'].join('\n');
+		codeEl.textContent = exampleText;
 	}
 }
