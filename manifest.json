@@ -1,0 +1,10 @@
+{
+	"id": "obsidian-tasks-mcp",
+	"name": "Tasks MCP Server",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "Exposes Obsidian Tasks plugin API via MCP (Model Context Protocol) server",
+	"author": "Hyun",
+	"authorUrl": "",
+	"isDesktopOnly": true
+}
