@@ -37,8 +37,9 @@ interface TasksQuery {
 interface TasksPluginInternal {
 	apiV1?: TasksApiV1;
 	getTasks?: () => TasksTask[];
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	[key: string]: any;
+	Query?: new (queryText: string) => TasksQuery;
+	queryRenderer?: { constructor: { toString: () => string } };
+	[key: string]: unknown;
 }
 
 // Extended App interface for accessing internal plugins
@@ -459,7 +460,7 @@ export default class TasksMcpPlugin extends Plugin {
 		await this.loadSettings();
 
 		// Initialize cache and set up file watchers
-		this.initializeCache();
+		void this.initializeCache();
 		this.registerFileWatchers();
 
 		// Add settings tab
@@ -526,7 +527,7 @@ export default class TasksMcpPlugin extends Plugin {
 	 * Query tasks using Tasks plugin's internal Query class
 	 * Falls back to our own parser if Tasks plugin is not available
 	 */
-	async queryTasksWithTasksPlugin(queryText: string): Promise<Task[] | null> {
+	queryTasksWithTasksPlugin(queryText: string): Task[] | null {
 		const tasksPlugin = this.getTasksPlugin();
 		if (!tasksPlugin?.getTasks) {
 			return null; // Tasks plugin not available or doesn't have getTasks
@@ -537,22 +538,17 @@ export default class TasksMcpPlugin extends Plugin {
 			const tasksTasks = tasksPlugin.getTasks();
 
 			// Try to find Query class in the Tasks plugin
-			// The Query class should be accessible through the plugin's module
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const pluginModule = tasksPlugin as any;
-
-			// Look for Query constructor in various places
-			let QueryClass = null;
+			let QueryClass: (new (queryText: string) => TasksQuery) | null = null;
 
 			// Method 1: Check if there's a Query property
-			if (pluginModule.Query) {
-				QueryClass = pluginModule.Query;
+			if (tasksPlugin.Query) {
+				QueryClass = tasksPlugin.Query;
 			}
 
 			// Method 2: Check queryRenderer for access to Query
-			if (!QueryClass && pluginModule.queryRenderer) {
+			if (!QueryClass && tasksPlugin.queryRenderer) {
 				// Try to extract Query class from queryRenderer's context
-				const renderer = pluginModule.queryRenderer;
+				const renderer = tasksPlugin.queryRenderer;
 				if (renderer.constructor) {
 					// Look through the module scope
 					const constructorStr = renderer.constructor.toString();
@@ -564,13 +560,13 @@ export default class TasksMcpPlugin extends Plugin {
 			if (!QueryClass) {
 				try {
 					// This works if Tasks plugin exposes its internals
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const win = window as any;
+					const win = window as Window & { require?: (path: string) => { Query?: new (queryText: string) => TasksQuery } };
 					if (win.require) {
-						// Try common module paths
+						// Try common module paths using Vault#configDir
+						const configDir = this.app.vault.configDir;
 						const possiblePaths = [
 							'obsidian-tasks-plugin',
-							'.obsidian/plugins/obsidian-tasks-plugin/main',
+							`${configDir}/plugins/obsidian-tasks-plugin/main`,
 						];
 						for (const path of possiblePaths) {
 							try {
@@ -595,7 +591,7 @@ export default class TasksMcpPlugin extends Plugin {
 			}
 
 			// Create query and execute
-			const query = new QueryClass(queryText) as TasksQuery;
+			const query = new QueryClass(queryText);
 			if (query.error) {
 				console.error('Tasks query error:', query.error);
 				return null;
@@ -1455,7 +1451,7 @@ tag includes #work`,
 					let filteredTasks: Task[] | null = null;
 					if (!filePath) {
 						// Only use Tasks plugin query when not filtering by file path
-						filteredTasks = await this.queryTasksWithTasksPlugin(query);
+						filteredTasks = this.queryTasksWithTasksPlugin(query);
 					}
 
 					// Fallback to our own parser
@@ -1554,7 +1550,7 @@ tag includes #work`,
 			await this.updateCacheForFile(file);
 		}
 		this.cacheInitialized = true;
-		console.log(`[TasksMCP] Cache initialized with ${this.taskCache.size} files`);
+		console.debug(`[TasksMCP] Cache initialized with ${this.taskCache.size} files`);
 	}
 
 	/**
