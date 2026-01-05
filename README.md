@@ -191,6 +191,10 @@ Recognizes standard Obsidian Tasks format:
 
 This plugin runs an HTTP server on localhost. Only local applications can connect to it. If you need remote access, consider using a secure tunnel.
 
+## Documentation
+
+- [Blog: Manage Obsidian Tasks with AI - Tasks MCP Plugin Guide](https://dss99911.github.io/tools/obsidian/2026/01/06/Obsidian-Tasks-MCP-Plugin.html) - Detailed guide with use cases and examples
+
 ## License
 
 MIT License
