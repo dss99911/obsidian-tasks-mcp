@@ -1,7 +1,7 @@
 {
 	"id": "tasks-mcp",
 	"name": "Tasks MCP Server",
-	"version": "1.0.3",
+	"version": "1.0.4",
 	"minAppVersion": "1.0.0",
 	"description": "Exposes Tasks plugin API via MCP (Model Context Protocol) for AI assistant integration.",
 	"author": "Hyun",
