@@ -1,10 +1,10 @@
 {
-	"id": "obsidian-tasks-mcp",
+	"id": "tasks-mcp",
 	"name": "Tasks MCP Server",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "1.0.0",
-	"description": "Exposes Obsidian Tasks plugin API via MCP (Model Context Protocol) server",
+	"description": "Exposes Tasks plugin API via MCP (Model Context Protocol) for AI assistant integration.",
 	"author": "Hyun",
-	"authorUrl": "",
+	"authorUrl": "https://github.com/dss99911",
 	"isDesktopOnly": true
 }

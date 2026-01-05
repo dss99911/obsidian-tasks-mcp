@@ -17,7 +17,7 @@ An Obsidian plugin that exposes task management functionality via MCP (Model Con
 
 1. Go to [Releases](https://github.com/dss99911/obsidian-tasks-mcp/releases)
 2. Download `main.js` and `manifest.json` from the latest release
-3. In your vault, create folder: `.obsidian/plugins/obsidian-tasks-mcp/`
+3. In your vault, create folder: `.obsidian/plugins/tasks-mcp/`
 4. Copy the downloaded files into this folder
 5. Open Obsidian Settings > Community plugins
 6. Turn off "Restricted mode" if enabled
@@ -32,7 +32,7 @@ npm install
 npm run build
 ```
 
-Copy `main.js` and `manifest.json` to your vault's `.obsidian/plugins/obsidian-tasks-mcp/` folder.
+Copy `main.js` and `manifest.json` to your vault's `.obsidian/plugins/tasks-mcp/` folder.
 
 ## Configuration
 
