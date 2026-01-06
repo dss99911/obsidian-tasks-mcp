@@ -1161,13 +1161,13 @@ tag includes #work`,
 			},
 			{
 				name: 'get_tasks_by_date',
-				description: 'Gets tasks with a specific due date or date range',
+				description: 'Gets tasks that happen on a specific date (due, scheduled, starts, or in Daily Note for that date)',
 				inputSchema: {
 					type: 'object',
 					properties: {
 						date: {
 							type: 'string',
-							description: 'Due date in YYYY-MM-DD format'
+							description: 'Date in YYYY-MM-DD format'
 						},
 						includeOverdue: {
 							type: 'boolean',
@@ -1477,8 +1477,8 @@ tag includes #work`,
 					const includeOverdue = args.includeOverdue as boolean || false;
 					const allTasks = await this.getAllTasks();
 					const query = includeOverdue
-						? `has due date\ndue before ${date} or due ${date}\nnot done`
-						: `due ${date}`;
+						? `happens before ${date} or happens ${date}\nnot done`
+						: `happens ${date}`;
 					const filteredTasks = TaskParser.queryTasks(allTasks, query);
 					return {
 						jsonrpc: '2.0',
