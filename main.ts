@@ -55,11 +55,13 @@ interface AppWithPlugins extends App {
 interface TasksMcpSettings {
 	port: number;
 	enableServer: boolean;
+	authToken: string;
 }
 
 const DEFAULT_SETTINGS: TasksMcpSettings = {
 	port: 3789,
-	enableServer: true
+	enableServer: true,
+	authToken: ''
 }
 
 // MCP Protocol types
@@ -451,6 +453,7 @@ class TaskParser {
 export default class TasksMcpPlugin extends Plugin {
 	settings: TasksMcpSettings;
 	server: http.Server | null = null;
+	private requestQueue: Promise<void> = Promise.resolve();
 
 	// Task cache for performance
 	private taskCache: Map<string, Task[]> = new Map();
@@ -766,7 +769,7 @@ export default class TasksMcpPlugin extends Plugin {
 		return { success: true, filePath, task: taskMarkdown };
 	}
 
-	async updateTaskInFile(filePath: string, lineNumber: number, newTaskMarkdown: string): Promise<{ success: boolean; filePath: string; lineNumber: number; oldTask: string; newTask: string }> {
+	async updateTaskInFile(filePath: string, lineNumber: number, newTaskMarkdown: string, expectedMarkdown?: string): Promise<{ success: boolean; filePath: string; lineNumber: number; oldTask: string; newTask: string }> {
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!file || !(file instanceof TFile)) {
 			throw new Error(`File not found: ${filePath}`);
@@ -780,13 +783,16 @@ export default class TasksMcpPlugin extends Plugin {
 		}
 
 		const oldTask = lines[lineNumber - 1];
+		if (expectedMarkdown && oldTask !== expectedMarkdown) {
+			throw new Error(`Task mismatch at ${filePath}:${lineNumber}. Expected: "${expectedMarkdown}", Found: "${oldTask}"`);
+		}
 		lines[lineNumber - 1] = newTaskMarkdown;
 
 		await this.app.vault.modify(file, lines.join('\n'));
 		return { success: true, filePath, lineNumber, oldTask, newTask: newTaskMarkdown };
 	}
 
-	async removeTaskFromFile(filePath: string, lineNumber: number): Promise<{ success: boolean; filePath: string; lineNumber: number; removedTask: string }> {
+	async removeTaskFromFile(filePath: string, lineNumber: number, expectedMarkdown?: string): Promise<{ success: boolean; filePath: string; lineNumber: number; removedTask: string }> {
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!file || !(file instanceof TFile)) {
 			throw new Error(`File not found: ${filePath}`);
@@ -800,6 +806,9 @@ export default class TasksMcpPlugin extends Plugin {
 		}
 
 		const removedTask = lines[lineNumber - 1];
+		if (expectedMarkdown && removedTask !== expectedMarkdown) {
+			throw new Error(`Task mismatch at ${filePath}:${lineNumber}. Expected: "${expectedMarkdown}", Found: "${removedTask}"`);
+		}
 		lines.splice(lineNumber - 1, 1);
 
 		await this.app.vault.modify(file, lines.join('\n'));
@@ -829,12 +838,28 @@ export default class TasksMcpPlugin extends Plugin {
 			// CORS headers
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-			res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+			res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
 			if (req.method === 'OPTIONS') {
 				res.writeHead(200);
 				res.end();
 				return;
+			}
+
+			// Bearer token authentication
+			if (this.settings.authToken) {
+				const authHeader = req.headers.authorization;
+				if (!authHeader || !authHeader.startsWith('Bearer ')) {
+					res.writeHead(401, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'Unauthorized' }));
+					return;
+				}
+				const token = authHeader.slice(7);
+				if (token !== this.settings.authToken) {
+					res.writeHead(401, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'Unauthorized' }));
+					return;
+				}
 			}
 
 			// SSE endpoint
@@ -865,7 +890,7 @@ export default class TasksMcpPlugin extends Plugin {
 				let body = '';
 				req.on('data', chunk => body += chunk);
 				req.on('end', () => {
-					void (async () => {
+					this.requestQueue = this.requestQueue.then(async () => {
 						try {
 							const request = JSON.parse(body) as JsonRpcRequest;
 							const response = await this.handleMcpRequest(request);
@@ -884,7 +909,7 @@ export default class TasksMcpPlugin extends Plugin {
 							res.writeHead(400, { 'Content-Type': 'application/json' });
 							res.end(JSON.stringify(error));
 						}
-					})();
+					}).catch(() => { /* prevent queue chain from breaking */ });
 				});
 				return;
 			}
@@ -900,7 +925,7 @@ export default class TasksMcpPlugin extends Plugin {
 			res.end('Not found');
 		});
 
-		this.server.listen(this.settings.port, () => {
+		this.server.listen(this.settings.port, '127.0.0.1', () => {
 			new Notice(`MCP server started on port ${this.settings.port}`);
 			console.debug(`Tasks MCP server listening on http://localhost:${this.settings.port}`);
 		});
@@ -1065,6 +1090,10 @@ export default class TasksMcpPlugin extends Plugin {
 							type: 'string',
 							enum: ['incomplete', 'complete', 'cancelled', 'in_progress'],
 							description: 'Task status'
+						},
+						expectedMarkdown: {
+							type: 'string',
+							description: 'Expected original markdown of the task for safety verification. If provided and does not match, the update will be rejected.'
 						}
 					}
 				}
@@ -1086,6 +1115,10 @@ export default class TasksMcpPlugin extends Plugin {
 						lineNumber: {
 							type: 'number',
 							description: 'Line number of the task (1-based)'
+						},
+						expectedMarkdown: {
+							type: 'string',
+							description: 'Expected original markdown of the task for safety verification. If provided and does not match, the removal will be rejected.'
 						}
 					}
 				}
@@ -1386,7 +1419,8 @@ tag includes #work`,
 						newTaskMarkdown += ` ${formattedTags.join(' ')}`;
 					}
 
-					const result = await this.updateTaskInFile(filePath, lineNumber, newTaskMarkdown);
+					const expectedMarkdown = args.expectedMarkdown as string | undefined;
+					const result = await this.updateTaskInFile(filePath, lineNumber, newTaskMarkdown, expectedMarkdown);
 					return {
 						jsonrpc: '2.0',
 						id,
@@ -1415,7 +1449,8 @@ tag includes #work`,
 						return this.errorResponse(id, 'Either taskId or both filePath and lineNumber are required');
 					}
 
-					const result = await this.removeTaskFromFile(filePath, lineNumber);
+					const expectedMarkdown = args.expectedMarkdown as string | undefined;
+					const result = await this.removeTaskFromFile(filePath, lineNumber, expectedMarkdown);
 					return {
 						jsonrpc: '2.0',
 						id,
@@ -1677,6 +1712,19 @@ class TasksMcpSettingTab extends PluginSettingTab {
 					this.plugin.settings.enableServer = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('Auth token')
+			.setDesc('Bearer token for authentication. Leave empty to disable.')
+			.addText(text => {
+				text.inputEl.type = 'password';
+				text.setPlaceholder('Enter token')
+					.setValue(this.plugin.settings.authToken)
+					.onChange(async (value) => {
+						this.plugin.settings.authToken = value;
+						await this.plugin.saveSettings();
+					});
+			});
 
 		new Setting(containerEl)
 			.setName('Server status')
